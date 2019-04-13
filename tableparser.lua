@@ -1,31 +1,14 @@
 local load = _VERSION > "Lua 5.1" and load or loadstring
 
-local parser = {}
-function parser.dump(t)
-    if type(t) ~= "table" then
-        print(t)
-        return
-    end
-    local s = "{\n"
-    local function p(px, t)
-        for k, v in pairs(t) do
-            k = tostring(k)
-            if type(v) ~= "table" then
-                s = s .. px .. k .. "=" .. tostring(v) .. "\n"
-            else
-                s = s .. px .. k .. "={\n"
-                p(px .. "  ", v)
-                s = s .. px .. "}\n"
-            end
-        end
-    end
-    p("  ", t)
-    print(s .. "}")
-end
+local parser = {
+    strict = true
+}
 
-function parser.decode(str)
-    local f = load("return " .. str)
-    return f and f()
+local function quote(s)
+    local r = string.gsub(s, '["\\]', '\\%1')
+    r = string.gsub(r, '\r', '\\r')
+    r = string.gsub(r, '\n', '\\n')
+    return r
 end
 
 local function parseKey(k)
@@ -35,10 +18,43 @@ local function parseKey(k)
     elseif tp == "number" then
         return "[" .. k .. "]"
     elseif tp == "string" then
-        return k
+        return parser.strict and '["' .. quote(k) .. '"]' or k
     else
         error("encode err: not support key type: " .. tp)
     end
+end
+
+function parser.dump(t)
+    if type(t) ~= "table" then
+        print(t)
+        return
+    end
+    local s = "{\n"
+    local function p(px, t)
+        for k, v in pairs(t) do
+            k = type(k) == "string" and '["' .. k .. '"]' or "[" .. tostring(k) .. "]"
+            local tv = type(v)
+            if tv ~= "table" then
+                v = tv == "string" and '"' .. v .. '"' or tostring(v)
+                s = s .. px .. k .. "=" .. v .. "\n"
+            else
+                s = s .. px .. k .. "={\n"
+                p(px .. "    ", v)
+                s = s .. px .. "}\n"
+            end
+        end
+    end
+    p("    ", t)
+    print(s .. "}")
+end
+
+function parser.useStrict(tag)
+    parser.strict = tag
+end
+
+function parser.decode(str)
+    local f = load("return " .. str)
+    return f and f()
 end
 
 function parser.encode(obj)
@@ -48,7 +64,7 @@ function parser.encode(obj)
     elseif tp == "number" then
         return obj
     elseif tp == "string" then
-        return '"' .. obj .. '"'
+        return '"' .. quote(obj) .. '"'
     elseif tp == "table" then
         local vTable = {}
         local kvTable = {}
